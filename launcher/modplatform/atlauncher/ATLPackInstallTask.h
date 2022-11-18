@@ -81,7 +81,7 @@ class PackInstallTask : public InstanceTask
 Q_OBJECT
 
 public:
-    explicit PackInstallTask(UserInteractionSupport *support, QString packName, QString version, InstallMode installMode = InstallMode::Install);
+    explicit PackInstallTask(UserInteractionSupport *support, QString packName, QString version, InstallMode installMode = InstallMode::Install, QWidget* parent = nullptr);
     virtual ~PackInstallTask(){}
 
     bool canAbort() const override { return true; }
@@ -109,6 +109,7 @@ private:
     void deleteExistingFiles();
     void installConfigs();
     void extractConfigs();
+    void parseMods();
     void downloadMods();
     bool extractMods(
         const QMap<QString, VersionMod> &toExtract,
@@ -146,6 +147,8 @@ private:
     QFuture<bool> m_modExtractFuture;
     QFutureWatcher<bool> m_modExtractFutureWatcher;
 
+    //FIXME: nuke
+    QWidget* m_parent;
 };
 
 }

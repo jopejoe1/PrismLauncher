@@ -53,20 +53,22 @@
 #include "meta/Version.h"
 #include "meta/VersionList.h"
 
-#include "BuildConfig.h"
 #include "Application.h"
+#include "BuildConfig.h"
+#include "ui/dialogs/BlockedModsDialog.h"
 
 namespace ATLauncher {
 
 static Meta::Version::Ptr getComponentVersion(const QString& uid, const QString& version);
 
-PackInstallTask::PackInstallTask(UserInteractionSupport *support, QString packName, QString version, InstallMode installMode)
+PackInstallTask::PackInstallTask(UserInteractionSupport *support, QString packName, QString version, InstallMode installMode, QWidget* parent)
 {
     m_support = support;
     m_pack_name = packName;
     m_pack_safe_name = packName.replace(QRegularExpression("[^A-Za-z0-9]"), "");
     m_version_name = version;
     m_install_mode = installMode;
+    m_parent = parent;
 }
 
 bool PackInstallTask::abort()
@@ -748,27 +750,75 @@ void PackInstallTask::downloadMods()
 
     jarmods.clear();
     jobPtr = new NetJob(tr("Mod download"), APPLICATION->network());
-    for(const auto& mod : m_version.mods) {
+    QList<BlockedMod> blocked_mods;
+    auto anyBlocked = false;
+    QList<VersionMod> mods;
+    QList<VersionMod> blocked_mods_info;
+
+    for(const auto& mod : m_version.mods){
         // skip non-client mods
         if(!mod.client) continue;
 
         // skip optional mods that were not selected
         if(mod.optional && !selectedMods.contains(mod.name)) continue;
 
+        BlockedMod blocked_mod;
+        VersionMod updated_mod = mod;
+        if (mod.download == DownloadType::Browser) {
+            blocked_mod.name = mod.file;
+            blocked_mod.websiteUrl = mod.url;
+            blocked_mod.hash = mod.md5;
+            blocked_mod.matched = false;
+            blocked_mod.localPath = "";
+
+            blocked_mods.append(blocked_mod);
+            blocked_mods_info.append(mod);
+
+            anyBlocked = true;
+
+            //emitFailed(tr("Unsupported download type: %1").arg(mod.download_raw));
+        } else {
+            mods.append(mod);
+        }
+    }
+
+    if (anyBlocked) {
+        qWarning() << "Blocked mods found, displaying mod list";
+
+        auto message_dialog = new BlockedModsDialog(m_parent, tr("Blocked mods found"),
+                                                    tr("The following mods were blocked on third party launchers.<br/>"
+                                                       "You will need to manually download them and add them to the modpack"),
+                                                    blocked_mods);
+        message_dialog->setModal(true);
+
+        if (message_dialog->exec()) {
+            qDebug() << "Post dialog blocked mods list: " << blocked_mods;
+            int i = 0;
+            for (const auto& blocked_mod : blocked_mods) {
+                VersionMod mod = blocked_mods_info[i];
+                mod.url = blocked_mod.localPath;
+                mods.append(mod);
+                i++;
+            }
+
+        } else {
+            return;
+        }
+    }
+
+    for(const auto& mod : m_version.mods) {
         QString url;
         switch(mod.download) {
             case DownloadType::Server:
-                url = BuildConfig.ATL_DOWNLOAD_SERVER_URL + mod.url;
+                mods.append(mod);
                 break;
             case DownloadType::Browser:
-                emitFailed(tr("Unsupported download type: %1").arg(mod.download_raw));
-                return;
             case DownloadType::Direct:
                 url = mod.url;
                 break;
             case DownloadType::Unknown:
                 emitFailed(tr("Unknown download type: %1").arg(mod.download_raw));
-                return;
+                break;
         }
 
         QFileInfo fileName(mod.file);
