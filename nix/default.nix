@@ -19,6 +19,7 @@
 , tomlplusplus
 , ghc_filesystem
 , cmark
+, yad
 , msaClientID ? ""
 , jdks ? [ jdk17 jdk8 ]
 
@@ -70,6 +71,7 @@ stdenv.mkDerivation rec {
           libGL
           glfw
           openal
+          yad
           stdenv.cc.cc.lib
         ];
     in
